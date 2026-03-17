@@ -1,0 +1,115 @@
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/nav_sat_fix.hpp>
+#include <mavros_msgs/srv/waypoint_push.hpp>
+#include <mavros_msgs/srv/waypoint_clear.hpp>
+#include <mavros_msgs/srv/set_mode.hpp>
+#include <mavros_msgs/msg/waypoint.hpp>
+
+using namespace std::chrono_literals;
+
+class GlobalMissionManager : public rclcpp::Node
+{
+public:
+  GlobalMissionManager() : Node("global_mission_manager")
+  {
+    gps_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
+      "/mavros/global_position/global", 10,
+      std::bind(&GlobalMissionManager::gps_cb, this, std::placeholders::_1));
+
+    wp_clear_   = create_client<mavros_msgs::srv::WaypointClear>("/mavros/mission/clear");
+    wp_push_    = create_client<mavros_msgs::srv::WaypointPush>("/mavros/mission/push");
+    mode_client_= create_client<mavros_msgs::srv::SetMode>("/mavros/set_mode");
+
+    timer_ = create_wall_timer(1s, std::bind(&GlobalMissionManager::fsm, this));
+
+    RCLCPP_INFO(get_logger(), "Global Mission Manager (NO ARM) ready");
+  }
+
+private:
+  rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gps_sub_;
+  rclcpp::Client<mavros_msgs::srv::WaypointClear>::SharedPtr wp_clear_;
+  rclcpp::Client<mavros_msgs::srv::WaypointPush>::SharedPtr wp_push_;
+  rclcpp::Client<mavros_msgs::srv::SetMode>::SharedPtr mode_client_;
+  rclcpp::TimerBase::SharedPtr timer_;
+
+  sensor_msgs::msg::NavSatFix current_gps_;
+  bool gps_ready_{false};
+  bool mission_sent_{false};
+
+  void gps_cb(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
+  {
+    current_gps_ = *msg;
+    gps_ready_ = true;
+  }
+
+  void fsm()
+  {
+    if (!gps_ready_ || mission_sent_) return;
+
+    upload_mission();
+    // change_mode("AUTO");  // sengaja dimatikan dulu
+
+    mission_sent_ = true;
+    RCLCPP_INFO(get_logger(), "Mission sent (NO ARM, NO AUTO)");
+  }
+
+  void upload_mission()
+  {
+    double lat = current_gps_.latitude;
+    double lon = current_gps_.longitude;
+    double alt = 2.0;   // relative takeoff altitude
+
+    // 2 meter ke timur
+    double meters = 2.0;
+    double dlon = meters / (111320.0 * cos(lat * M_PI / 180.0));
+    double target_lon = lon + dlon;
+
+    // clear old mission
+    wp_clear_->async_send_request(
+      std::make_shared<mavros_msgs::srv::WaypointClear::Request>());
+
+    auto req = std::make_shared<mavros_msgs::srv::WaypointPush::Request>();
+
+    // WP0 - TAKEOFF (WAJIB frame 3)
+    mavros_msgs::msg::Waypoint wp0;
+    wp0.frame = 3;              // MAV_FRAME_GLOBAL_RELATIVE_ALT
+    wp0.command = 22;          // NAV_TAKEOFF
+    wp0.is_current = true;
+    wp0.autocontinue = true;
+    wp0.param1 = 0;
+    wp0.x_lat = lat;
+    wp0.y_long = lon;
+    wp0.z_alt = alt;
+
+    // WP1 - maju 2m ke timur
+    mavros_msgs::msg::Waypoint wp1;
+    wp1.frame = 3;
+    wp1.command = 16;          // NAV_WAYPOINT
+    wp1.autocontinue = true;
+    wp1.x_lat = lat;
+    wp1.y_long = target_lon;
+    wp1.z_alt = alt;
+
+    // WP2 - LAND
+    mavros_msgs::msg::Waypoint wp2;
+    wp2.frame = 3;
+    wp2.command = 21;          // NAV_LAND
+    wp2.autocontinue = true;
+    wp2.x_lat = lat;
+    wp2.y_long = target_lon;
+    wp2.z_alt = 0;
+
+    req->waypoints = {wp0, wp1, wp2};
+    wp_push_->async_send_request(req);
+
+    RCLCPP_INFO(get_logger(), "UPLOAD: TAKEOFF -> 2m EAST -> LAND");
+  }
+};
+
+int main(int argc, char **argv)
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<GlobalMissionManager>());
+  rclcpp::shutdown();
+  return 0;
+}

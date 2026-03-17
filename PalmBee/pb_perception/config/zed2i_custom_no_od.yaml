@@ -1,0 +1,42 @@
+# config/zed2i_custom.yaml
+# Parameters for Stereolabs zed2i camera
+---
+/**:
+  ros__parameters:
+    general:
+      camera_model: 'zed2i'
+      camera_name: 'zed2i'
+      grab_resolution: 'HD720'
+      grab_frame_rate: 15
+
+    sensors:
+      publish_imu_tf: true
+      sensors_image_sync: false
+      sensors_pub_rate: 400.0
+
+    depth:
+      #depth_mode: 'PERFORMANCE'   # 🔴 ENABLE DEPTH
+      min_depth: 0.3
+      max_depth: 10.0
+      #depth_stabilization: 30
+
+    object_detection:
+      od_enabled: true
+
+    pos_tracking:
+        pos_tracking_enabled: true
+        publish_odom: false
+        publish_odom_tf: false
+        publish_map_tf: false
+        set_gravity_as_origin: true
+        set_as_static: false
+
+    #pos_tracking:
+      #pos_tracking_enabled: true
+      #publish_odom: true
+      #publish_odom_tf: true
+      #publish_odom_velocity: true
+      #odom_frame: 'odom'
+      #base_frame: 'zed_camera_link'
+      #set_gravity_as_origin: true
+      #set_as_static: false

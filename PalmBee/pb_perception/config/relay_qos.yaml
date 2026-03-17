@@ -1,0 +1,3 @@
+/zed/zed_node/odom:
+  reliability: best_effort
+  durability: volatile
