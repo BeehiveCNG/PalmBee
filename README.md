@@ -34,3 +34,5 @@ We welcome contributions to the PalmBee package. Please fork the repository and 
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## For Maintenace 
+For file more than github limit ( palmbee, script, yolo ) please use GIT LFS
